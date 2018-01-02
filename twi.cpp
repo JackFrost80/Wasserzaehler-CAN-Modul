@@ -39,7 +39,7 @@ void twi_write(TWI_t *twiname, uint8_t *writeData,uint8_t page_adress,uint8_t Ad
 	twiname->MASTER.DATA = Adress;       // write word addr
 	while(!(twiname->MASTER.STATUS&TWI_MASTER_WIF_bm));
 	for(i=0;i<bytes;i++){
-		if(!fixed)             // write date and time
+		if(!fixed)             // write data 
 		twiname->MASTER.DATA =writeData[i];
 		else
 		twiname->MASTER.DATA =writeData[0];

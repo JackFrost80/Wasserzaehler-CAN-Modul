@@ -26,8 +26,8 @@
 
 void FLASH_init();
 void Flash_block_erase(uint32_t Address);
-void Flash_start_write_AAI(uint32_t Address,unsigned char *c,uint8_t length);
-void Flash_write_AAI(unsigned char *c,uint8_t length);
+void Flash_start_write_AAI(uint32_t Address,unsigned char c);
+void Flash_write_AAI(unsigned char c);
 void Flash_set_WREN();
 void Flash_set_WRDI();
 

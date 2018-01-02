@@ -35,43 +35,48 @@ void Flash_block_erase(uint32_t Address)
 	SPIC_Write((uint8_t)(Address>>8)); //Adresse 0x00
 	SPIC_Write((uint8_t)(Address)); //Adresse 0x00
 	SS_Port.OUTSET = SS_Pin;
-	_delay_ms(30);
+	//_delay_ms(30);
 }
 
-void Flash_start_write_AAI(uint32_t Address, unsigned char *c,uint8_t length)
+void Flash_start_write_AAI(uint32_t Address, unsigned char c)
 {
-	c+=4;
+    
 	SS_Port.OUTCLR = SS_Pin;
 	SPIC_Write(AAI_Write); //Adresse 0x00
 	SPIC_Write((uint8_t)(Address>>16)); //Adresse 0x00
 	SPIC_Write((uint8_t)(Address>>8)); //Adresse 0x00
 	SPIC_Write((uint8_t)(Address)); //Adresse 0x00
-	SPIC_Write(*c++);
+	SPIC_Write(c);
 	SS_Port.OUTSET = SS_Pin;
 	_delay_us(25);
-	for(uint8_t i=1; i<length; i++)
-	{
-		SS_Port.OUTCLR = SS_Pin;
-		SPIC_Write(AAI_Write); //Adresse 0x00
-		SPIC_Write(*c++); //Adresse 0x00
-		SS_Port.OUTSET = SS_Pin;
-		_delay_us(25);
-	}
-	SS_Port.OUTSET = SS_Pin;
+	//for(uint8_t i=1; i<length; i++)
+	//{
+		//SS_Port.OUTCLR = SS_Pin;
+		//SPIC_Write(AAI_Write); //Adresse 0x00
+		//SPIC_Write(*c++); //Adresse 0x00
+		//SS_Port.OUTSET = SS_Pin;
+		//position++;
+		//_delay_us(25);
+	//}
+	//SS_Port.OUTSET = SS_Pin;
 }
 
-void Flash_write_AAI( unsigned char *c,uint8_t length)
+void Flash_write_AAI( unsigned char c)
 {
-	c+=4;
-	for(uint8_t i=0; i<length; i++)
-	{
-		SS_Port.OUTCLR = SS_Pin;
-		SPIC_Write(AAI_Write); //Adresse 0x00
-		SPIC_Write(*c++); //Adresse 0x00
-		SS_Port.OUTSET = SS_Pin;
-		_delay_us(25);
-	}
+	SS_Port.OUTCLR = SS_Pin;
+	SPIC_Write(AAI_Write); //Adresse 0x00
+	SPIC_Write(c); //Adresse 0x00
 	SS_Port.OUTSET = SS_Pin;
+	_delay_us(25);
+	//for(uint8_t i=0; i<length; i++)
+	//{
+		//SS_Port.OUTCLR = SS_Pin;
+		//SPIC_Write(AAI_Write); //Adresse 0x00
+		//SPIC_Write(*c++); //Adresse 0x00
+		//SS_Port.OUTSET = SS_Pin;
+		//_delay_us(25);
+	//}
+	//SS_Port.OUTSET = SS_Pin;
 }
 
 void Flash_set_WREN()
