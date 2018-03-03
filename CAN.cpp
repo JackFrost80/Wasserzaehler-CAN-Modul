@@ -21,7 +21,6 @@ void CAN_init()
 	SPIC_Write(reset_command);
 	_delay_us(0.08);
 	PORTA.OUTSET = PIN1_bm;
-	
 	_delay_us(10);
 	PORTA.OUTCLR = PIN1_bm;
 	_delay_us(0.08);
@@ -40,6 +39,75 @@ void CAN_init()
 	_delay_us(10);
 	PORTA.OUTCLR = PIN1_bm;
 	_delay_us(0.08);
+	SPIC_Write(write_command);
+	SPIC_Write(RXM0SIDH);
+	SPIC_Write(0x80);  //Mask Bit 11 RX0
+	PORTA.OUTSET = PIN1_bm;
+	_delay_us(10);
+	PORTA.OUTCLR = PIN1_bm;
+	_delay_us(0.08);
+	SPIC_Write(write_command);
+	SPIC_Write(RXM1SIDH);
+	SPIC_Write(0x80);  //Mask Bit 11 RX1
+	PORTA.OUTSET = PIN1_bm;
+	_delay_us(10);
+	PORTA.OUTCLR = PIN1_bm;
+	_delay_us(0.08);
+	SPIC_Write(write_command);
+	SPIC_Write(RXF2SIDH);
+	SPIC_Write(0x80);  //Filter Bit 11 RX1
+	SPIC_Write(0xE0);  //Filter Bit 11 RX1
+	PORTA.OUTSET = PIN1_bm;
+	_delay_us(10);
+	
+	PORTA.OUTCLR = PIN1_bm;  //Filter 0 
+	_delay_us(0.08);
+	SPIC_Write(write_command);
+	SPIC_Write(RXF0SIDH);
+	SPIC_Write(0x00);  //Filter Bit 11 RX1
+	SPIC_Write(0xE0);  //Filter Bit 11 RX1
+	PORTA.OUTSET = PIN1_bm;
+	_delay_us(10);
+	
+	PORTA.OUTCLR = PIN1_bm;  //Filter 0 
+	_delay_us(0.08);
+	SPIC_Write(write_command);
+	SPIC_Write(RXF1SIDH);
+	SPIC_Write(0x00);  //Filter Bit 11 RX1
+	SPIC_Write(0xE0);  //Filter Bit 11 RX1
+	PORTA.OUTSET = PIN1_bm;
+	_delay_us(10);
+	
+	PORTA.OUTCLR = PIN1_bm;  //Filter 0 
+	_delay_us(0.08);
+	SPIC_Write(write_command);
+	SPIC_Write(RXF3SIDH);
+	SPIC_Write(0x80);  //Filter Bit 11 RX1
+	SPIC_Write(0xE0);  //Filter Bit 11 RX1
+	PORTA.OUTSET = PIN1_bm;
+	_delay_us(10);
+	
+	PORTA.OUTCLR = PIN1_bm;  //Filter 0 
+	_delay_us(0.08);
+	SPIC_Write(write_command);
+	SPIC_Write(RXF4SIDH);
+	SPIC_Write(0x80);  //Filter Bit 11 RX1
+	SPIC_Write(0xE0);  //Filter Bit 11 RX1
+	PORTA.OUTSET = PIN1_bm;
+	_delay_us(10);
+	
+	PORTA.OUTCLR = PIN1_bm;  //Filter 0 
+	_delay_us(0.08);
+	SPIC_Write(write_command);
+	SPIC_Write(RXF5SIDH);
+	SPIC_Write(0x80);  //Filter Bit 11 RX1
+	SPIC_Write(0xE0);  //Filter Bit 11 RX1
+	PORTA.OUTSET = PIN1_bm;
+	_delay_us(10);
+	
+	
+	PORTA.OUTCLR = PIN1_bm;
+	_delay_us(0.08);
 	SPIC_Write(read_command);
 	SPIC_Write(CNF3);
 	SPIC_Read_Write(0xFF);
@@ -56,11 +124,41 @@ void CAN_init()
 	_delay_us(10);
 	PORTA.OUTCLR = PIN1_bm;
 	_delay_us(0.08);
+	SPIC_Write(read_command);
+	SPIC_Write(RXM0SIDH);
+	SPIC_Write(0x81);  //Mask Bit 11 RX0
+	PORTA.OUTSET = PIN1_bm;
+	_delay_us(10);
+	PORTA.OUTCLR = PIN1_bm;
+	_delay_us(0.08);
+	SPIC_Write(read_command);
+	SPIC_Write(RXM1SIDH);
+	SPIC_Write(0x80);  //Mask Bit 11 RX1
+	PORTA.OUTSET = PIN1_bm;
+	_delay_us(10);
+	PORTA.OUTCLR = PIN1_bm;
+	_delay_us(0.08);
+	SPIC_Write(read_command);
+	SPIC_Write(RXF2SIDH);
+	SPIC_Write(0x80);  //Filter Bit 11 RX1
+	PORTA.OUTSET = PIN1_bm;
+	_delay_us(10);
+	PORTA.OUTCLR = PIN1_bm;
+	_delay_us(0.08);
+	SPIC_Write(read_command);
+	SPIC_Write(RXF0SIDH);
+	SPIC_Write(0x80);  //Filter Bit 11 RX1
+	PORTA.OUTSET = PIN1_bm;
+	_delay_us(10);
+	PORTA.OUTCLR = PIN1_bm;
+	_delay_us(0.08);
 	SPIC_Write(write_command);
 	SPIC_Write(CANCTRL);
 	SPIC_Write(OSM_bm | normal_operation_mode_gc | CLKEN_bm | eighth_system_clock_gc);
 	PORTA.OUTSET = PIN1_bm;
 	
+	
+
 }
 
 void Fill_CAN_Buffer(uint8_t * _Buffer)
@@ -71,4 +169,45 @@ void Fill_CAN_Buffer(uint8_t * _Buffer)
 	_Buffer[3] = 0x00;
 	_Buffer[4] = 0x00;
 	
+	
+	
+}
+
+bool read_can_tx_status(uint8_t tx_buffer)
+{
+	bool status = false;
+	PORTA.OUTCLR = PIN1_bm;
+	_delay_us(0.08);
+	SPIC_Write(read_command);
+	switch(tx_buffer)
+	{
+		case 0:
+		{
+			SPIC_Write(TXB0CTRL);
+			
+		}
+		break;
+		case 1:
+		{
+			SPIC_Write(TXB1CTRL);
+			
+		}
+		break;
+		case 2:
+		{
+			SPIC_Write(TXB2CTRL);
+			
+		}
+		break;
+		
+		default :
+		return false;
+		
+	
+	}
+	uint8_t helper = SPIC_Read_Write(0xFF);
+	 if(!(helper & TXREQ_bm))
+		status = true;
+	PORTA.OUTSET = PIN1_bm;
+	return status;
 }

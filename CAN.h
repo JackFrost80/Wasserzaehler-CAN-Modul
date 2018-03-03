@@ -5,13 +5,30 @@
  *  Author: JackFrost
  */ 
 
+#include <avr/io.h>
+#include <stdlib.h>
+#include <stdio.h>
 
 #ifndef CAN_H_
 #define CAN_H_
 
 #define System_Message 0x0001
-#define Bootloader_Message 0x080F
+#define Start_Firmware 0x070F
+#define Firmware 0x0710
+#define End_Firmware 0x0711
+#define Bootloader_Message 0x0712
+#define Send_Firmware 0x0713
 #define Water_message 0x03F0 
+#define Water_flow 0x03F1
+
+typedef struct RX_CAN {
+	
+	uint16_t ID;
+	bool Remote_frame;
+	uint8_t length;
+	uint8_t data[8];
+} RX_CAN_t, *p_RX_can_t;
+
 
 typedef enum System_message_type
 {
@@ -24,7 +41,6 @@ typedef enum System_message_type
 
 void CAN_init();
 void Fill_CAN_Buffer(uint8_t * _Buffer);
-
-
+bool read_can_tx_status(uint8_t buffer);
 
 #endif /* CAN_H_ */

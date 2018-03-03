@@ -10,6 +10,8 @@
 #include <util/delay.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include "MCP2515.h"
+#include "CAN.h"
 
 void SPIC_Init(void)
 {
@@ -75,4 +77,36 @@ void SPIC_Read_array(uint8_t *data, uint8_t length)
 		while(!(SPIC.STATUS & (1<<SPI_IF_bp))); //wait completion
 		data[i] = SPIC.DATA;
 	}
+}
+
+void SPIC_Read_RX_buffer(RX_CAN_t *data)
+{
+	uint8_t CAN_Data_RX0[13] = {0};
+	SPIC_Read_array(CAN_Data_RX0,13);
+	// Read ID
+	data->ID = (uint16_t)CAN_Data_RX0[0] <<3 | (uint16_t)(CAN_Data_RX0[1] >>5);
+	if((CAN_Data_RX0[1] & SRR_bm) == SRR_bm)
+		data->Remote_frame = true;
+	else
+		data->Remote_frame = false;
+	data->length = CAN_Data_RX0[4] & 0x0F;
+	for(uint8_t i=0;i<8;i++)
+	{
+		data->data[i] = CAN_Data_RX0[i+5];
+	}
+}
+
+void SPIC_write_tx_buffer(RX_CAN_t *data)
+{
+	uint8_t CAN_Data_TX[13] = {0};
+	CAN_Data_TX[0] = ((uint16_t)data->ID >>3 ) & 0xFF;  // Byte 0
+	CAN_Data_TX[1] = (((uint16_t)data->ID <<5 ) & 0xFF) |  (data->Remote_frame << SRR_bp);  // Byte 1
+	CAN_Data_TX[2] = 0; // Extended ID 
+	CAN_Data_TX[3] = 0; // Extended ID 
+	CAN_Data_TX[4] = data->length;
+	for(uint8_t i=0;i<8;i++)
+	{
+		CAN_Data_TX[i+5] = data->data[i];
+	}
+	SPIC_Write_array(CAN_Data_TX,13);
 }

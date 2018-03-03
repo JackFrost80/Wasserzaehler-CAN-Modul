@@ -40,6 +40,8 @@ extern "C"
 #define FRAM_base_adress 0xA0
 #define ZeitZone CET+info->tm_isdst
 
+
+
 volatile uint8_t key_state;
 volatile uint8_t key_press;
 volatile uint8_t key_rpt;                                  // key long press and repeat
@@ -66,21 +68,32 @@ char Buffer[32] = {0};
 volatile bool force_summertime_check = false;
 volatile bool data_changed = false;
 uint8_t CAN_Data[14] = {0};
-uint8_t CAN_Data_RX0[14] = {0};
-uint8_t CAN_Data_RX1[14] = {0};
 bool CAN_send = false;
 uint8_t can_status = 0;
 uint8_t can_rx_status = 0;
 uint8_t can_status_recieved = 0;
 uint8_t can_error = 0;
-volatile bool can_control = false;
+volatile bool can_control = true;
 bool New_RX0 = false;
 bool New_RX1 = false;
 uint8_t buffer_FRAM[6] = {0};
 unsigned char firmware[256] = {0};
 volatile bool update = false;
 volatile bool first_byte = false;
+volatile bool last_byte = false;
 volatile bool firmware_ready = false;
+volatile bool Wasser = false;
+RX_CAN_t rx_can0;
+RX_CAN_t rx_can1;
+RX_CAN_t tx_can0;
+RX_CAN_t tx_can1;
+p_RX_can_t p_rx_can0 = &rx_can0;
+p_RX_can_t p_rx_can1 = &rx_can1;
+p_RX_can_t p_tx_can0 = &tx_can0;
+p_RX_can_t p_tx_can1 = &tx_can1;
+bool transfere_firmware = false;
+uint32_t position = 0;
+volatile uint8_t LED_status = 0;
 
 
 ISR( TCC5_OVF_vect )                            // every 10ms
@@ -112,9 +125,11 @@ ISR(TCC4_CCB_vect)
 	uint8_t helper = (uint8_t) (TCC4.CCB>>8);
 	if((helper > 0x5C) && (helper < 0x64) )
 	{
-		PORTD.OUTTGL = PIN0_bm;
+		if(LED_status == 3)
+			PORTD.OUTTGL = PIN0_bm;
 		zaehlerstand++;
 		data_changed =  true;
+		
 	}
 	TCC4.INTFLAGS = TC4_CCBIF_bm;
 }
@@ -166,26 +181,13 @@ ISR(USARTD0_RXC_vect)
 		{
 			if(data != 0x7F)
 			{
-				if(data != ':')
-				{
-					if (data >= '0' && data <= '9')            data -= '0';
-					else if (data >= 'A' && data <= 'F')       data -= 'A' - 10;
-					else if (data >= 'a' && data <= 'f')       data -= 'a' - 10;
-					if(counter%2)
-					{
-						helper = data <<4;
-					}
-					else
-					{
-						firmware[counter/2] = helper + data;
-					}
-					counter++;
-				}
+				firmware[counter] = data;
+				counter++;
 			}
 			else
 			{
 				start = false;
-				firmware_ready = true;
+				//firmware_ready = true;
 			}
 
 		}
@@ -280,24 +282,24 @@ void ESP_init()
 void Clock_Init(void)
 {
 	//Interner 2MHz Oszi
-	OSC.XOSCCTRL =  OSC_X32KLPM_bm | OSC_XOSCSEL1_bm;  // 32 kHz Quarz settings.
-	OSC.CTRL = OSC_RC32MEN_bm  | OSC_XOSCEN_bm;
+	//OSC.XOSCCTRL =  OSC_X32KLPM_bm | OSC_XOSCSEL1_bm;  // 32 kHz Quarz settings.
+	OSC.CTRL |= OSC_RC32MEN_bm;
 	// Warten bis Oszillator stabil ist
 	while ((OSC.STATUS & OSC_RC32MEN_bm) == 0);
 	//while ((OSC.STATUS & OSC_XOSCEN_bm) == 0);
 	
 	// I/O Protection
-	CCP = CCP_IOREG_gc;
-	// Prescaler
+	//CCP = CCP_IOREG_gc;
+	//// Prescaler
 	//CLK.PSCTRL = CLK_Prescaler;
-	// PLL Sorce und PLL Faktor
-	//OSC.PLLCTRL = OSC_PLLSRC_RC2M_gc | (PLL_Faktor << OSC_PLLFAC_gp);
+	//// PLL Sorce und PLL Faktor
+	//OSC.PLLCTRL = OSC_PLLSRC_RC32M_gc | (PLL_Faktor << OSC_PLLFAC_gp);
 	// PLL enable
 	//OSC.CTRL = OSC_PLLEN_bm ;
 	//while ((OSC.STATUS & OSC_PLLRDY_bm) == 0);
 	// I/O Protection
-	//CCP = CCP_IOREG_gc;
-	// System Clock selection
+	CCP = CCP_IOREG_gc;
+	//System Clock selection
 	CLK.CTRL = CLK_SCLKSEL_RC32M_gc;
 	// DFLL ein (Auto Kalibrierung)
 	//DFLLRC32M.CTRL = DFLL_ENABLE_bm;
@@ -309,14 +311,14 @@ void Timer_init(void)
 	EVSYS.CH0MUX = EVSYS_CHMUX_PORTA_PIN0_gc;
 	PORTA.PIN0CTRL |= PORT_ISC_BOTHEDGES_gc;
 	
-	TCC4.CTRLE = TC_TC4_HCCBMODE_CAPT_gc;
-	TCC4.CTRLD =  TC_TC4_EVACT_PWF_gc | TC_TC4_EVSEL_CH0_gc ; // Pulese detection and Event channel 0
+	TCC4.CTRLE = TC_HCCBMODE_CAPT_gc;
+	TCC4.CTRLD =  TC_EVACT_PWF_gc | TC_EVSEL_CH0_gc ; // Pulese detection and Event channel 0
 	
 	TCC4.INTCTRLB = TC4_CCBINTLVL1_bm | TC4_CCBINTLVL0_bm;
-	TCC4.CTRLA = TC_TC4_CLKSEL_DIV2_gc;
-	TCC5.INTCTRLA = TC_TC5_OVFINTLVL_MED_gc; // Debounce timer
+	TCC4.CTRLA = TC_CLKSEL_DIV2_gc;
+	TCC5.INTCTRLA = TC_OVFINTLVL_MED_gc; // Debounce timer
 	TCC5.PER = 39999;
-	TCC5.CTRLA = TC_TC4_CLKSEL_DIV8_gc;
+	TCC5.CTRLA = TC_CLKSEL_DIV8_gc;
 	
 
 }
@@ -333,6 +335,12 @@ void memset_volatile(volatile unsigned char *s, char c, size_t n)
 
 int main(void)
 {
+	PORTA.DIRSET = PIN7_bm;  //LED
+	PORTD.DIRSET = PIN0_bm;  //LED
+	PORTA.OUTSET = PIN7_bm;
+	PORTD.OUTSET = PIN0_bm;
+	volatile bool cleared = false;
+	volatile bool ready_to_write = false;
 	USARTD0.CTRLA |= USART_RXCINTLVL_HI_gc;
 	USARTD0.CTRLB |= USART_RXEN_bm | USART_TXEN_bm;
 	USARTD0.CTRLC |= USART_PMODE_EVEN_gc | USART_SBMODE_bm | USART_CHSIZE_8BIT_gc;
@@ -354,15 +362,16 @@ int main(void)
 	PORTD.DIRSET = PIN3_bm;		// PC3 (TXD0) as output
 	PORTD.DIRCLR = PIN2_bm;		// PC2 (RXD0) as input
 	PORTD.PIN2CTRL = PORT_OPC_PULLUP_gc;
-	PORTA.DIRSET = PIN7_bm;  //LED
+	
 	PORTA.PIN0CTRL = PORT_OPC_PULLDOWN_gc;
-	PORTD.DIRSET = PIN0_bm;  //LED
+	
 	//PORTC.PIN3CTRL = PORT_OPC_PULLUP_gc;
 	_delay_ms(10);
 	twi_read(&TWIC,buffer_FRAM,FRAM_base_adress,0,6);
 	zaehlerstand = (uint32_t)buffer_FRAM[0] <<24 | (uint32_t)buffer_FRAM[1] <<16 | (uint32_t)buffer_FRAM[2] << 8 | (uint32_t)buffer_FRAM[3];
 	Verbrauch_heute = (uint32_t)buffer_FRAM[4] << 8 | (uint32_t)buffer_FRAM[5];
 	Zaehlerstand_alt = zaehlerstand;
+	info = gurke(&Unixtimestamp,CET);
 	SPIC_Init();
 	CAN_init();
 	FLASH_init();
@@ -370,8 +379,11 @@ int main(void)
 	sei();
 	Timer_init();
 	Fill_CAN_Buffer(CAN_Data);
+	PORTA.OUTCLR = PIN7_bm;  //LED
 	while (1)
 	{
+		if(LED_status==0)
+			PORTD.OUTSET = PIN0_bm;
 		
 		PORTA.OUTCLR = PIN1_bm;
 		_delay_us(0.08);
@@ -390,6 +402,13 @@ int main(void)
 		SPIC_Write(EFLG);
 		can_error = SPIC_Read_Write(0xFF);
 		PORTA.OUTSET = PIN1_bm;
+		if(!get_key_state(1<<KEY0))
+		{
+			LED_status = 3;
+		}
+		else
+			LED_status = 0;
+		
 		
 		//if(get_key_state(1<<KEY0))
 		//{
@@ -443,6 +462,7 @@ int main(void)
 			buffer_FRAM[4] = (uint8_t) (Verbrauch_heute>>8);
 			buffer_FRAM[5] = (uint8_t) Verbrauch_heute;
 			twi_write(&TWIC,buffer_FRAM,FRAM_base_adress,0,6,false);
+			Wasser = true;
 			
 		}
 		if(Unixtimestamp != Unixtimestamp_old)
@@ -453,23 +473,25 @@ int main(void)
 		
 		if((can_rx_status && 0xB0) != 0)
 		{
+			if(LED_status == 3)
+				PORTA.OUTTGL = PIN7_bm;
 			
-			PORTA.OUTTGL = PIN7_bm;
-			if((can_rx_status && 0x40) != 0)
+			
+			if((can_rx_status & 0x40) != 0)
 			{
 				PORTA.OUTCLR = PIN1_bm;
 				_delay_us(0.08);
 				SPIC_Write(Read_RX0_SID);
-				SPIC_Read_array(CAN_Data_RX0,14);
+				SPIC_Read_RX_buffer(p_rx_can0);
 				PORTA.OUTSET = PIN1_bm;
 				New_RX0 = true;
 			}
-			if((can_rx_status && 0x80) != 0)
+			if((can_rx_status & 0x80) != 0)
 			{
 				PORTA.OUTCLR = PIN1_bm;
 				_delay_us(0.08);
 				SPIC_Write(Read_RX1_SID);
-				SPIC_Read_array(CAN_Data_RX1,14);
+				SPIC_Read_RX_buffer(p_rx_can1);
 				PORTA.OUTSET = PIN1_bm;
 				New_RX1 = true;
 			}
@@ -477,46 +499,221 @@ int main(void)
 		
 
 		
-		if(New_RX0)
+		if(New_RX0) // IDs < 0x0400
 		{
 			New_RX0 = false;
-			uint16_t ID = (uint16_t)CAN_Data_RX0[0] <<3;
-			ID |= (uint16_t)(CAN_Data_RX0[1] >>5);
-			if(ID == 1)
+			uint16_t temp = p_rx_can0->ID;
+			switch (temp)
 			{
-				can_status_recieved = CAN_Data_RX0[5];
-			}
-			
-			if(can_status_recieved  == clock_gc )
-			{
-				cli();
-				Unixtimestamp = (uint32_t)CAN_Data_RX0[6]<<24 | (uint32_t)CAN_Data_RX0[7]<<16 | (uint32_t)CAN_Data_RX0[8]<<8 | (uint32_t)CAN_Data_RX0[9];
-				sei();
-				info = gurke(&Unixtimestamp,CET);
-				force_summertime_check = true;
-				
-			}
-			
-			if(can_control)
-			{
-				
-				if(can_status_recieved  == midnight_clock_gc )
+				case System_Message:      //System message processing
 				{
-					can_status_recieved &= ~(0x01);
-					Verbrauch_gestern = Verbrauch_heute;
-					Verbrauch_heute = 0;
-					cli();
-					Unixtimestamp = (uint32_t)CAN_Data_RX0[6]<<24 | (uint32_t)CAN_Data_RX0[7]<<16 | (uint32_t)CAN_Data_RX0[8]<<8 | (uint32_t)CAN_Data_RX0[9];
-					sei();
-					info = gurke(&Unixtimestamp,CET);
-					force_summertime_check = true;
+					can_status_recieved = p_rx_can0->data[0];
+					if(can_status_recieved  == clock_gc )
+					{
+						cli();
+						Unixtimestamp = (uint32_t)p_rx_can0->data[1]<<24 | (uint32_t)p_rx_can0->data[2]<<16 | (uint32_t)p_rx_can0->data[3]<<8 | (uint32_t)p_rx_can0->data[4];
+						sei();
+						info = gurke(&Unixtimestamp,CET);
+						force_summertime_check = true;
+						
+					}
+					
+					if(can_control)
+					{
+						
+						if(can_status_recieved  == midnight_clock_gc )
+						{
+							can_status_recieved &= ~(0x01);
+							Verbrauch_gestern = Verbrauch_heute;
+							Verbrauch_heute = 0;
+							cli();
+							Unixtimestamp = (uint32_t)p_rx_can0->data[1]<<24 | (uint32_t)p_rx_can0->data[2]<<16 | (uint32_t)p_rx_can0->data[3]<<8 | (uint32_t)p_rx_can0->data[4];
+							sei();
+							info = gurke(&Unixtimestamp,CET);
+							force_summertime_check = true;
+						}
+						if(can_status_recieved  == midnight_gc )
+						{
+							can_status_recieved &= ~(0x01);
+							Verbrauch_gestern = Verbrauch_heute;
+							Verbrauch_heute = 0;
+						}
+					}
 				}
-				if(can_status_recieved  == midnight_gc )
+				break; //  Ende Systemmessage
+				
+				//case Start_Firmware:
+				//{   
+					//counter = 0;
+					//first_byte = true; // Start delete old Firmware in Flashchip
+					//cleared = false;
+					//ready_to_write = false;
+					//memcpy(&firmware[0],p_rx_can0->data,8); // Copy Data from Buffer to firmware buffer
+					//counter += 8;
+					//p_tx_can1->ID = Send_Firmware;
+					//p_tx_can1->Remote_frame = true;
+					//p_tx_can1->length = 0;
+					//PORTA.OUTCLR = PIN1_bm;
+					//_delay_us(0.08);
+					//SPIC_Write(write_command);
+					//SPIC_Write(TXB1CTRL);
+					//SPIC_Write(0x00);
+					//SPIC_write_tx_buffer(p_tx_can1);
+					//PORTA.OUTSET = PIN1_bm;
+					//_delay_us(10);
+					//PORTA.OUTCLR = PIN1_bm;
+					//_delay_us(0.08);
+					//SPIC_Write(send_buffer_1);
+					//PORTA.OUTSET = PIN1_bm;  // Request new Firmwareframe
+					//
+				//}
+				//break; // Ende Firmwware start
+				//case Firmware:
+				//{
+					//memcpy(&firmware[counter],p_rx_can0->data,8); // Copy Data from Buffer to firmware buffer
+					//counter += 8;
+					//if(counter <= 248)
+					//{
+						//p_tx_can1->ID = Send_Firmware;
+						//p_tx_can1->Remote_frame = true;
+						//p_tx_can1->length = 0;
+						//PORTA.OUTCLR = PIN1_bm;
+						//_delay_us(0.08);
+						//SPIC_Write(write_command);
+						//SPIC_Write(TXB1CTRL);
+						//SPIC_Write(0x00);
+						//SPIC_write_tx_buffer(p_tx_can1);
+						//PORTA.OUTSET = PIN1_bm;
+						//_delay_us(10);
+						//PORTA.OUTCLR = PIN1_bm;
+						//_delay_us(0.08);
+						//SPIC_Write(send_buffer_1);
+						//PORTA.OUTSET = PIN1_bm;  // Request new Firmwareframe
+					//}
+					//else
+						//firmware_ready = true;
+						//
+					//
+				//}
+				//break;
+				//case End_Firmware:
+				//{
+					//memcpy(&firmware[counter],p_rx_can0->data,p_rx_can0->length); // Copy Data from Buffer to firmware buffer
+					//counter += p_rx_can0->length;
+					//firmware_ready = true;
+					//last_byte = true;
+					//
+				//}
+				//break;
+				//
+				//case Send_Firmware:
+				//{
+					//if(p_rx_can0->Remote_frame = true)
+				//{
+					//if(!transfere_firmware)
+					//{
+						//transfere_firmware = true;
+						//position = 0;
+					//}
+					//
+				//}
+				//}
+				//
+				//break;
+				
+				default:
+				break;
+			}
+		}
+		
+		if(New_RX1)  // IDs >= 0x0400
+		{
+			New_RX1 = false;
+			uint16_t temp = p_rx_can1->ID;
+			switch (temp)
+			{
+							
+				case Start_Firmware:
 				{
-					can_status_recieved &= ~(0x01);
-					Verbrauch_gestern = Verbrauch_heute;
-					Verbrauch_heute = 0;
+					counter = 0;
+					first_byte = true; // Start delete old Firmware in Flashchip
+					cleared = false;
+					ready_to_write = false;
+					memcpy(&firmware[0],p_rx_can1->data,8); // Copy Data from Buffer to firmware buffer
+					counter += 8;
+					p_tx_can1->ID = Send_Firmware;
+					p_tx_can1->Remote_frame = true;
+					p_tx_can1->length = 0;
+					PORTA.OUTCLR = PIN1_bm;
+					_delay_us(0.08);
+					SPIC_Write(write_command);
+					SPIC_Write(TXB1CTRL);
+					SPIC_Write(0x00);
+					SPIC_write_tx_buffer(p_tx_can1);
+					PORTA.OUTSET = PIN1_bm;
+					_delay_us(10);
+					PORTA.OUTCLR = PIN1_bm;
+					_delay_us(0.08);
+					SPIC_Write(send_buffer_1);
+					PORTA.OUTSET = PIN1_bm;  // Request new Firmwareframe
+					
 				}
+				break; // Ende Firmwware start
+				case Firmware:
+				{
+					memcpy(&firmware[counter],p_rx_can1->data,8); // Copy Data from Buffer to firmware buffer
+					counter += 8;
+					if(counter <= 248)
+					{
+						p_tx_can1->ID = Send_Firmware;
+						p_tx_can1->Remote_frame = true;
+						p_tx_can1->length = 0;
+						PORTA.OUTCLR = PIN1_bm;
+						_delay_us(0.08);
+						SPIC_Write(write_command);
+						SPIC_Write(TXB1CTRL);
+						SPIC_Write(0x00);
+						SPIC_write_tx_buffer(p_tx_can1);
+						PORTA.OUTSET = PIN1_bm;
+						_delay_us(10);
+						PORTA.OUTCLR = PIN1_bm;
+						_delay_us(0.08);
+						SPIC_Write(send_buffer_1);
+						PORTA.OUTSET = PIN1_bm;  // Request new Firmwareframe
+					}
+					else
+					firmware_ready = true;
+					
+					
+				}
+				break;
+				case End_Firmware:
+				{
+					memcpy(&firmware[counter],p_rx_can1->data,p_rx_can1->length); // Copy Data from Buffer to firmware buffer
+					counter += p_rx_can1->length;
+					firmware_ready = true;
+					last_byte = true;
+					
+				}
+				break;
+				
+				case Send_Firmware:
+				{
+					if(p_rx_can0->Remote_frame = true)
+					{
+						if(!transfere_firmware)
+						{
+							transfere_firmware = true;
+							position = 0;
+						}
+						
+					}
+				}
+				
+				break;
+				
+				default:
+				break;
 			}
 		}
 		
@@ -548,23 +745,61 @@ int main(void)
 		if((info->tm_sec <= 05)  && (!CAN_send))
 		{
 			CAN_send = true;
-			CAN_Data[5] = 0x06;  // 6 Bytes
-			CAN_Data[6] = (uint8_t) (Zaehlerstand_alt >> 24);
-			CAN_Data[7] = (uint8_t) (Zaehlerstand_alt >> 16);
-			CAN_Data[8] = (uint8_t) (Zaehlerstand_alt >> 8);
-			CAN_Data[9] = (uint8_t) (Zaehlerstand_alt);
-			CAN_Data[10] = (uint8_t) (Verbrauch_heute >> 8);
-			CAN_Data[11] = (uint8_t) (Verbrauch_heute);
+			p_tx_can0->ID = Water_message;
+			p_tx_can0->length = 0x06;  // 6 Bytes
+			p_tx_can0->data[0] = (uint8_t) (Zaehlerstand_alt >> 24);
+			p_tx_can0->data[1] = (uint8_t) (Zaehlerstand_alt >> 16);
+			p_tx_can0->data[2] = (uint8_t) (Zaehlerstand_alt >> 8);
+			p_tx_can0->data[3] = (uint8_t) (Zaehlerstand_alt);
+			p_tx_can0->data[4] = (uint8_t) (Verbrauch_heute >> 8);
+			p_tx_can0->data[5] = (uint8_t) (Verbrauch_heute);
+			p_tx_can0->Remote_frame = false;
+			//CAN_Data[5] = 0x06;  // 6 Bytes
+			//CAN_Data[6] = (uint8_t) (Zaehlerstand_alt >> 24);
+			//CAN_Data[7] = (uint8_t) (Zaehlerstand_alt >> 16);
+			//CAN_Data[8] = (uint8_t) (Zaehlerstand_alt >> 8);
+			//CAN_Data[9] = (uint8_t) (Zaehlerstand_alt);
+			//CAN_Data[10] = (uint8_t) (Verbrauch_heute >> 8);
+			//CAN_Data[11] = (uint8_t) (Verbrauch_heute);
 			PORTA.OUTCLR = PIN1_bm;
 			_delay_us(0.08);
 			SPIC_Write(write_command);
 			SPIC_Write(TXB0CTRL);
-			SPIC_Write_array(CAN_Data,12);
+			SPIC_Write(0x2);  // Mid High Message;
+			SPIC_write_tx_buffer(p_tx_can0);
+			//SPIC_Write_array(CAN_Data,12);
 			PORTA.OUTSET = PIN1_bm;
 			_delay_us(10);
 			PORTA.OUTCLR = PIN1_bm;
 			_delay_us(0.08);
 			SPIC_Write(send_buffer_0);
+			PORTA.OUTSET = PIN1_bm;
+			
+		}
+		
+		if(Wasser)
+		{
+			Wasser = false;
+			p_tx_can1->ID = Water_flow;
+			p_tx_can1->length = 0x01;  // 1 Byte
+			p_tx_can1->data[0] = 0x01;
+			p_tx_can1->Remote_frame = false;
+			//CAN_Data[1] = (uint8_t)(Water_flow >>3);
+			//CAN_Data[2] = (uint8_t)(Water_flow <<5);
+			//CAN_Data[5] = 0x01;  // 1 Byte
+			//CAN_Data[6] = 0x01;
+			PORTA.OUTCLR = PIN1_bm;
+			_delay_us(0.08);
+			SPIC_Write(write_command);
+			SPIC_Write(TXB2CTRL);
+			SPIC_Write(0x03); // High Prio message
+			SPIC_write_tx_buffer(p_tx_can1);
+			//SPIC_Write_array(CAN_Data,12);
+			PORTA.OUTSET = PIN1_bm;
+			_delay_us(10);
+			PORTA.OUTCLR = PIN1_bm;
+			_delay_us(0.08);
+			SPIC_Write(send_buffer_2);
 			PORTA.OUTSET = PIN1_bm;
 			
 		}
@@ -595,36 +830,263 @@ int main(void)
 		//Save firmware to flash
 		if(firmware_ready)
 		{
-			if(firmware[3] == 0x00)
+			static uint16_t count = 0;
+			if(first_byte)
 			{
-				if(first_byte)
+				if(!ready_to_write)
 				{
+					SS_Port.OUTCLR = SS_Pin;
+					_delay_us(0.08);
+					SPIC_Write(Flash_RDSR);
+					if(!(SPIC_Read_Write(0xFF) & 0x01) )
+						ready_to_write = true;
+					SS_Port.OUTSET = SS_Pin;
 					
+					
+				}
+				if(!cleared)
+				{
 					Flash_set_WREN();
 					_delay_us(10);
-					Flash_block_erase(0);
+					bool wait = true;
+					Flash_chip_erase();
+					cleared = true;
+					ready_to_write = false;
+					count = 0;
+				}
+				
+				if(ready_to_write && cleared)
+				{
+					PORTA.OUTSET = PIN7_bm;
 					Flash_set_WREN();
 					_delay_us(10);
-					Flash_start_write_AAI(0,firmware,16);
+					SS_Port.OUTCLR = SS_Pin;
+					_delay_us(0.08);
+					SPIC_Write(Flash_RDSR);
+					if(!(SPIC_Read_Write(0xFF) & 0x01) )
+					SS_Port.OUTSET = SS_Pin;
+					//firmware_ready = false;
 					first_byte = false;
-					
+					SS_Port.OUTCLR = SS_Pin;
+					_delay_us(0.08);
+					Flash_start_write_AAI(0,firmware[count]);
+					SS_Port.OUTSET = SS_Pin;
+					count++;
+					first_byte = false;
+					cleared = false;
+					ready_to_write = false;
+				}
+			}
+			else
+			{
+				if(last_byte)
+				{
+					Flash_write_AAI(firmware[count]);
+					count++;
+					if(count >= counter)
+					{
+						
+						firmware_ready = false;
+						count = 0;
+						counter = 0;
+						memset_volatile(firmware,0xFF,256);
+						Flash_set_WRDI();
+						PORTA.OUTCLR = PIN7_bm;
+						last_byte = false;
+					}
 				}
 				else
 				{
-					Flash_write_AAI(firmware,16);
-					Flash_set_WRDI();
-					
+					Flash_write_AAI(firmware[count]);
+					count++;
+					if(count >= 256)
+					{
+						firmware_ready = false;
+						counter = 0;
+						count = 0;
+						memset_volatile(firmware,0xFF,256);
+						p_tx_can1->ID = Send_Firmware;
+						p_tx_can1->Remote_frame = true;
+						p_tx_can1->length = 0;
+						PORTA.OUTCLR = PIN1_bm;
+						_delay_us(0.08);
+						SPIC_Write(write_command);
+						SPIC_Write(TXB1CTRL);
+						SPIC_Write(0x00);
+						SPIC_write_tx_buffer(p_tx_can1);
+						PORTA.OUTSET = PIN1_bm;
+						_delay_us(10);
+						PORTA.OUTCLR = PIN1_bm;
+						_delay_us(0.08);
+						SPIC_Write(send_buffer_1);
+						PORTA.OUTSET = PIN1_bm;  // Request new Firmwareframe
+					}
 				}
+				
+				
 			}
-			memset_volatile(firmware,0xFF,256);
+		}
+		//Save firmware to flash
+		//if(firmware_ready)
+		//{
+			//static uint16_t count = 0;
+			//
+			//
+				//if(first_byte)
+				//{
+					//if(!ready_to_write)
+					//{
+						//SS_Port.OUTCLR = SS_Pin;
+						//_delay_us(0.08);
+						//SPIC_Write(Flash_RDSR);
+						//if(!(SPIC_Read_Write(0xFF) & 0x01) )
+							//ready_to_write = true;
+						//SS_Port.OUTCLR = SS_Pin;
+						//
+						//
+					//}
+					//if(!cleared)
+					//{
+						//Flash_set_WREN();
+						//_delay_us(10);
+						//bool wait = true;
+						//_delay_us(0.08);
+						//while(wait)
+						//{
+							//SS_Port.OUTCLR = SS_Pin;
+							//_delay_us(0.08);
+							//SPIC_Write(Flash_RDSR);
+							//if(!(SPIC_Read_Write(0xFF) & 0x01) )
+							//wait = false;
+							//SS_Port.OUTSET = SS_Pin;
+						//}
+						//Flash_block_erase(0);
+						//SS_Port.OUTSET = SS_Pin;
+						//_delay_us(0.08);
+						//
+						//wait = true;
+						//while(wait)
+						//{
+							//SS_Port.OUTCLR = SS_Pin;
+							//_delay_us(0.08);
+							//SPIC_Write(Flash_RDSR);
+							//if(!(SPIC_Read_Write(0xFF) & 0x01) )
+								//wait = false;
+							//SS_Port.OUTSET = SS_Pin;
+						//}
+						//
+						//cleared = true;
+						//ready_to_write = true;
+						//
+					//}
+					//if(cleared && ready_to_write)
+					//{
+						//Flash_set_WREN();
+						//_delay_us(10);
+						//bool wait = true;
+						//while(wait)
+						//{
+							//SS_Port.OUTCLR = SS_Pin;
+							//_delay_us(0.08);
+							//SPIC_Write(Flash_RDSR);
+							//if(!(SPIC_Read_Write(0xFF) & 0x01) )
+							//wait = false;
+							//SS_Port.OUTSET = SS_Pin;
+						//}
+						//_delay_us(0.08);
+						//SS_Port.OUTCLR = SS_Pin;
+						//_delay_us(0.08);
+						//Flash_start_write_AAI(0,firmware[count]);
+						//SS_Port.OUTSET = SS_Pin;
+						//count++;
+						//first_byte = false;
+						//cleared = false;
+						//ready_to_write = false;
+						//
+					//}
+				//}
+				//else
+				//{
+					//if(last_byte)
+					//{
+						//Flash_write_AAI(firmware[count]);
+						//count++;
+						//if(count >= counter)
+						//{
+							//
+							//firmware_ready = false;
+							//count = 0;
+							//counter = 0;
+							//memset_volatile(firmware,0xFF,256);
+							//Flash_set_WRDI();
+							//last_byte = false;	
+						//}
+					//}
+					//else
+					//{
+						//Flash_write_AAI(firmware[count]);
+						//count++;
+						//if(count >= 256)
+						//{
+							//
+							//firmware_ready = false;
+							//counter = 0;
+							//count = 0;
+							//memset_volatile(firmware,0xFF,256);
+							//p_tx_can1->ID = Send_Firmware;
+							//p_tx_can1->Remote_frame = true;
+							//p_tx_can1->length = 0;
+							//PORTA.OUTCLR = PIN1_bm;
+							//_delay_us(0.08);
+							//SPIC_Write(write_command);
+							//SPIC_Write(TXB1CTRL);
+							//SPIC_Write(0x00);
+							//SPIC_write_tx_buffer(p_tx_can1);
+							//PORTA.OUTSET = PIN1_bm;
+							//_delay_us(10);
+							//PORTA.OUTCLR = PIN1_bm;
+							//_delay_us(0.08);
+							//SPIC_Write(send_buffer_1);
+							//PORTA.OUTSET = PIN1_bm;  // Request new Firmwareframe
+						//}
+						//
+					//}
+				//}
+		//}
+		
+		if(transfere_firmware)
+		{
 			
-			firmware_ready = false;
-			strcpy(send_buffer,";");  // Flash written
-			send_buffer[strlen(send_buffer)] = 0x90; //String ENDE
-			DMA_TX_ESP_CHANNEL.ADDRL = ((uint16_t)tx_buffer_Pointer >> 0) & 0xff;
-			DMA_TX_ESP_CHANNEL.ADDRH = ((uint16_t)tx_buffer_Pointer >> 8) & 0xff;
-			DMA_TX_ESP_CHANNEL.TRFCNT = strlen (send_buffer);
-			DMA_TX_ESP_CHANNEL.CTRLA |= EDMA_CH_ENABLE_bm;
+			if(read_can_tx_status(1))
+			if(position <= 0x12000UL)
+			{
+				_delay_us(125);
+				Flash_read(position,p_tx_can1->data,8);
+				position += 8;
+				p_tx_can1->ID = Firmware;
+				p_tx_can1->Remote_frame = false;
+				p_tx_can1->length = 8;
+				PORTA.OUTCLR = PIN1_bm;
+				_delay_us(0.08);
+				SPIC_Write(write_command);
+				SPIC_Write(TXB1CTRL);
+				SPIC_Write(0x00); // Prio low
+				SPIC_write_tx_buffer(p_tx_can1);
+				PORTA.OUTSET = PIN1_bm;
+				_delay_us(10);
+				PORTA.OUTCLR = PIN1_bm;
+				_delay_us(0.08);
+				SPIC_Write(send_buffer_1);
+				PORTA.OUTSET = PIN1_bm;  // Request new Firmwareframe
+				
+			}
+			else
+			{
+				transfere_firmware = false;
+			
+			}
+			
+			
 		}
 		
 		

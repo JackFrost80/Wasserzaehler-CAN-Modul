@@ -16,6 +16,7 @@
 #define Block_erase 0x52
 #define Chip_erase 0x60
 #define AAI_Write 0xAF
+#define Read 0x03
 #define Byte_write 0x02
 #define Flash_Read 0x03
 #define Flash_WREN 0x06
@@ -26,8 +27,10 @@
 
 void FLASH_init();
 void Flash_block_erase(uint32_t Address);
-void Flash_start_write_AAI(uint32_t Address,unsigned char *c,uint8_t length);
-void Flash_write_AAI(unsigned char *c,uint8_t length);
+void Flash_chip_erase();
+void Flash_read(uint32_t Address, unsigned char *c,uint8_t count);
+void Flash_start_write_AAI(uint32_t Address,unsigned char c);
+void Flash_write_AAI(unsigned char c);
 void Flash_set_WREN();
 void Flash_set_WRDI();
 
